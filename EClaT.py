@@ -102,12 +102,13 @@ if __name__ == '__main__':
     sc = SparkContext(conf = conf)
 
     # infile = 'data/T20I6D100K.data'
-    infile = "transData"
-    minsupport = 0.4
+    infile = "connect"
+    minsupport = 0.99
 
     res = distEclat(infile, minsupport, sc)
 
     print("res =", res)
+    print("len(res)", len(res))
 
 
 
