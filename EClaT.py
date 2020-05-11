@@ -2,6 +2,8 @@ from pyspark import RDD, SparkConf, SparkContext
 import os
 import numpy as np
 
+# PROBLEM: output is in the format of concatenated strings
+
 # get the union of two sorted transactions
 def unionT(t1: list, t2: list):
     t1 = sorted(t1)
@@ -29,7 +31,7 @@ def runEclat(prefix: list, supportList: list, min_support: int):
         support = len(uT)
 
         if support >= min_support:
-            print("now at: ", prefix[0] + itemset)
+            # print("now at: ", prefix[0] + itemset)
             support_list.append(prefix[0] + itemset) #for strings, use concat
             support_list += runEclat([prefix[0] + itemset, uT], supportK[1:],\
                  min_support)
@@ -40,13 +42,8 @@ def runEclat(prefix: list, supportList: list, min_support: int):
 
 
 
-if __name__ == '__main__':
-    conf = SparkConf().setAppName("EClaT")\
-        .setMaster("local[*]")
-    sc = SparkContext(conf = conf)
-    inFile = "transData"
+def distEclat(inFile, min_sup, sc):
 
-    minsup = 2
     triMatrixMode = True
 
     # Phase 1: generate Frequent items; produce vertical dataset
@@ -55,15 +52,17 @@ if __name__ == '__main__':
     # TODO: add support for diffsets
 
     transDataFile = sc.textFile(inFile)
+    numTrans = transDataFile.count()
+    minsup = min_sup * numTrans
     transDataIndex = transDataFile.zipWithIndex()
     transData = transDataIndex.map(lambda v: (v[1], v[0].split()))
-    print(transData.take(5))
+    # print(transData.take(5))
 
     itemTids = transData.flatMap(lambda t: [(i, t[0]) for i in t[1]])\
         .groupByKey()\
         .map(lambda t: (t[0], list(t[1])))
 
-    print(itemTids.take(5))
+    # print(itemTids.take(5))
 
     freqItems = itemTids.filter(lambda t: len(t[1]) >= minsup)
 
@@ -75,13 +74,13 @@ if __name__ == '__main__':
     
     #sort the RDD
     freqItemTidsList = freqItems.sortByKey()
-    print(freqItemTidsList.take(5))
+    # print(freqItemTidsList.take(5))
 
     
     # use the configuration as the number of partitions
-    print("number of partitions used: {}".format(sc.defaultParallelism))
+    # print("number of partitions used: {}".format(sc.defaultParallelism))
     itemTidsParts = itemTids.repartition(sc.defaultParallelism).glom()
-    print(itemTidsParts.take(5))
+    # print(itemTidsParts.take(5))
 
 
     #phase 3: EClaT from k-itemsets
@@ -91,11 +90,14 @@ if __name__ == '__main__':
     freqItemsListToRun = freqRange.map(\
         lambda t: (freqItemsList[t], freqItemsList[t+1:]))
 
-    print(freqItemsListToRun.take(5))
+    # print(freqItemsListToRun.take(5))
 
     res = freqItemsListToRun.flatMap(lambda t: runEclat(t[0], t[1], 2)).collect()
     res = freqAtoms + res
-    print(res)
+    return res
+
+
+   
     
     
     
