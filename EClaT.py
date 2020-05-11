@@ -1,6 +1,7 @@
 from pyspark import RDD, SparkConf, SparkContext
 import os
 import numpy as np
+import math
 
 # PROBLEM: output is in the format of concatenated strings
 
@@ -26,14 +27,14 @@ def runEclat(prefix: list, supportList: list, min_support: int):
     support_list = []
     supportK = supportList.copy()
     while supportK:
-        itemset, trans = supportK.pop(0)
+        item, trans = supportK.pop(0)
         uT = unionT(trans, prefix[1])
         support = len(uT)
 
         if support >= min_support:
             # print("now at: ", prefix[0] + itemset)
-            support_list.append(prefix[0] + itemset) #for strings, use concat
-            support_list += runEclat([prefix[0] + itemset, uT], supportK[1:],\
+            support_list.append(prefix[0] + [item]) # use list concat
+            support_list += runEclat([prefix[0] + [item], uT], supportK[0:],\
                  min_support)
         
     return support_list
@@ -44,8 +45,6 @@ def runEclat(prefix: list, supportList: list, min_support: int):
 
 def distEclat(inFile, min_sup, sc):
 
-    triMatrixMode = True
-
     # Phase 1: generate Frequent items; produce vertical dataset
 
     # tranData is ans RDD, consider using zipwithUniqueId
@@ -54,9 +53,10 @@ def distEclat(inFile, min_sup, sc):
     transDataFile = sc.textFile(inFile)
     numTrans = transDataFile.count()
     minsup = min_sup * numTrans
+    # print("minsup", minsup)
     transDataIndex = transDataFile.zipWithIndex()
     transData = transDataIndex.map(lambda v: (v[1], v[0].split()))
-    # print(transData.take(5))
+    # print("transaction data with index:", transData.take(5))
 
     itemTids = transData.flatMap(lambda t: [(i, t[0]) for i in t[1]])\
         .groupByKey()\
@@ -69,32 +69,47 @@ def distEclat(inFile, min_sup, sc):
     # TODO: phase 2 By dist-Eclat/bigFim, use dist-Apriori (data distribution) 
     # for k-itemsets generation
 
-    freqItemsCnt = freqItems.map(lambda t: (t[0], len(t[1])))
+    # freqItemsCnt = freqItems.map(lambda t: (t[0], len(t[1])))
     #freqItemsCnt.saveAsTextFile("FrequentItems")
     
     #sort the RDD
     freqItemTidsList = freqItems.sortByKey()
-    # print(freqItemTidsList.take(5))
+    # print(freqItemTidsList.collect())
 
     
     # use the configuration as the number of partitions
     # print("number of partitions used: {}".format(sc.defaultParallelism))
-    itemTidsParts = itemTids.repartition(sc.defaultParallelism).glom()
+    # itemTidsParts = itemTids.repartition(sc.defaultParallelism).glom()
     # print(itemTidsParts.take(5))
 
 
     #phase 3: EClaT from k-itemsets
     freqItemsList = freqItemTidsList.collect()
-    freqAtoms = freqItemTidsList.keys().map(lambda t : t[0]).collect()
+    freqAtoms = freqItemTidsList.keys().map(lambda k: [k]).collect()
+    # print("frequent items", freqAtoms)
     freqRange = sc.parallelize(range(0, len(freqItemsList) - 1))
     freqItemsListToRun = freqRange.map(\
         lambda t: (freqItemsList[t], freqItemsList[t+1:]))
 
-    # print(freqItemsListToRun.take(5))
+    # print('freqItemsListToRun', freqItemsListToRun.take(5))
 
-    res = freqItemsListToRun.flatMap(lambda t: runEclat(t[0], t[1], 2)).collect()
+    res = freqItemsListToRun.flatMap(lambda t: runEclat([[t[0][0]], t[0][1]], t[1], 2)).collect()
     res = freqAtoms + res
     return res
+
+if __name__ == '__main__':
+    conf = SparkConf().setAppName("EClaT Expr")
+    sc = SparkContext(conf = conf)
+
+    # infile = 'data/T20I6D100K.data'
+    infile = "transData"
+    minsupport = 0.4
+
+    res = distEclat(infile, minsupport, sc)
+
+    print("res =", res)
+
+
 
 
    
